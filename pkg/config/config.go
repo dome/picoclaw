@@ -246,6 +246,7 @@ type ChannelsConfig struct {
 	WeComAIBot WeComAIBotConfig `json:"wecom_aibot"`
 	Pico       PicoConfig       `json:"pico"`
 	IRC        IRCConfig        `json:"irc"`
+	Webhook    WebhookConfig    `json:"webhook"`
 }
 
 // GroupTriggerConfig controls when the bot responds in group chats.
@@ -462,6 +463,15 @@ type IRCConfig struct {
 	GroupTrigger       GroupTriggerConfig  `json:"group_trigger,omitempty"`
 	Typing             TypingConfig        `json:"typing,omitempty"`
 	ReasoningChannelID string              `json:"reasoning_channel_id"    env:"PICOCLAW_CHANNELS_IRC_REASONING_CHANNEL_ID"`
+}
+
+// WebhookConfig configures the inbound webhook channel for external integrations
+type WebhookConfig struct {
+	Enabled bool   `json:"enabled"             env:"PICOCLAW_CHANNELS_WEBHOOK_ENABLED"`
+	Token   string `json:"token"               env:"PICOCLAW_CHANNELS_WEBHOOK_TOKEN"`
+	Host    string `json:"host"                env:"PICOCLAW_CHANNELS_WEBHOOK_HOST"`
+	Port    int    `json:"port"                env:"PICOCLAW_CHANNELS_WEBHOOK_PORT"`
+	Path    string `json:"path"                env:"PICOCLAW_CHANNELS_WEBHOOK_PATH"`
 }
 
 type HeartbeatConfig struct {

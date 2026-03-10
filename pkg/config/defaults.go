@@ -175,6 +175,13 @@ func DefaultConfig() *Config {
 				MaxConnections: 100,
 				AllowFrom:      FlexibleStringSlice{},
 			},
+			Webhook: WebhookConfig{
+				Enabled: false,
+				Token:   "",
+				Host:    "0.0.0.0",
+				Port:    18795,
+				Path:    "/webhook",
+			},
 		},
 		Providers: ProvidersConfig{
 			OpenAI: OpenAIProviderConfig{WebSearch: true},
