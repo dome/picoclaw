@@ -55,6 +55,11 @@ func NewWalletCommand() *cobra.Command {
 				Chains:  walletChains,
 			}, d.workspace)
 
+			// Initialize wallet service (connect to blockchains)
+			if err := d.walletService.Initialize(cmd.Context()); err != nil {
+				return fmt.Errorf("failed to initialize wallet service: %w", err)
+			}
+
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {

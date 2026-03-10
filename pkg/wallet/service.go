@@ -19,19 +19,19 @@ import (
 
 // Service provides wallet functionality
 type Service struct {
-	config       Config
-	workspace    string
-	keystoreDir  string
-	clients      map[int]*ethclient.Client
-	clientsMu    sync.RWMutex
-	keystore     *keystore.KeyStore
-	logger       *slog.Logger
+	config      Config
+	workspace   string
+	keystoreDir string
+	clients     map[int]*ethclient.Client
+	clientsMu   sync.RWMutex
+	keystore    *keystore.KeyStore
+	logger      *slog.Logger
 }
 
 // NewService creates a new wallet service
 func NewService(config Config, workspace string) *Service {
 	keystoreDir := filepath.Join(workspace, "wallets")
-	
+
 	return &Service{
 		config:      config,
 		workspace:   workspace,
@@ -40,6 +40,11 @@ func NewService(config Config, workspace string) *Service {
 		keystore:    keystore.NewKeyStore(keystoreDir, keystore.StandardScryptN, keystore.StandardScryptP),
 		logger:      slog.Default().With("component", "wallet"),
 	}
+}
+
+// GetWorkspace returns the workspace path
+func (s *Service) GetWorkspace() string {
+	return s.workspace
 }
 
 // Initialize sets up the wallet service
@@ -87,6 +92,11 @@ func (s *Service) Close() error {
 func (s *Service) CreateWallet(ctx context.Context, password string) (*WalletInfo, error) {
 	if password == "" {
 		return nil, fmt.Errorf("password cannot be empty")
+	}
+
+	// Restrict to only one wallet
+	if len(s.keystore.Accounts()) > 0 {
+		return nil, fmt.Errorf("only one wallet is allowed - cannot create multiple wallets")
 	}
 
 	account, err := s.keystore.NewAccount(password)
@@ -267,7 +277,7 @@ func (s *Service) GetChainByID(chainID int) (*ChainConfig, error) {
 // CallContractMethod calls a read-only smart contract function
 func (s *Service) CallContractMethod(ctx context.Context, contractAddress common.Address, abiType string, method string, params ...interface{}) (interface{}, error) {
 	var abiJson abi.ABI
-	
+
 	switch abiType {
 	case "erc20":
 		abiJson = erc20ABIJson
@@ -309,7 +319,7 @@ func (s *Service) CallContractMethod(ctx context.Context, contractAddress common
 // ExecuteContractMethod executes a write smart contract function
 func (s *Service) ExecuteContractMethod(ctx context.Context, from common.Address, contractAddress common.Address, abiType string, method string, value *big.Int, password string, params ...interface{}) (*types.Transaction, error) {
 	var abiJson abi.ABI
-	
+
 	switch abiType {
 	case "erc20":
 		abiJson = erc20ABIJson

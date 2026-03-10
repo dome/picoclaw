@@ -2,7 +2,10 @@ package commands
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"math/big"
@@ -54,14 +57,14 @@ func walletCommand() Definition {
 				return req.Reply(`Usage: /wallet [command] [arguments]
 
 Commands:
-  create [password]          Create a new Ethereum wallet
-  transfer [to] [amount] [password]  Transfer ETH to another address
-  transfer_token [to] [amount] [password]  Transfer ERC20 token to another address
+  create [password]          Create a new Ethereum wallet (auto-saves PIN)
+  transfer [to] [amount]     Transfer ETH to another address (auto-uses stored PIN)
+  transfer_token [to] [amount]  Transfer ERC20 token to another address (auto-uses stored PIN)
   info                       Show wallet information and balance
   chain                      List available chains
   switch [chain_name/ID]     Switch active chain
   call <contract> <abi> <method> [args]  Call contract read function
-  write <contract> <abi> <method> <value> <password> [args]  Execute contract write function
+  write <contract> <abi> <method> <value> [args]  Execute contract write function (auto-uses stored PIN)
 
 Note: You must configure your wallet in config.json first.`)
 			}
@@ -79,7 +82,7 @@ func handleWalletCreate(ctx context.Context, req Request, rt *Runtime, password 
 	w := wallet.NewService(wallet.Config{
 		Enabled: rt.Config.Wallet.Enabled,
 		Chains:  convertChainConfigs(rt.Config.Wallet.Chains),
-	}, rt.Config.Agents.Defaults.Workspace)
+	}, rt.Config.WorkspacePath())
 	if err := w.Initialize(ctx); err != nil {
 		return req.Reply(fmt.Sprintf("Error initializing wallet service: %v", err))
 	}
@@ -90,14 +93,54 @@ func handleWalletCreate(ctx context.Context, req Request, rt *Runtime, password 
 		return req.Reply(fmt.Sprintf("Error creating wallet: %v", err))
 	}
 
-	return req.Reply(fmt.Sprintf("✅ Wallet created successfully!\n\nAddress: %s\n\nKeystore saved to your workspace.", info.Address))
+	// Save password to pin.json
+	pinFilePath := filepath.Join(w.GetWorkspace(), "wallets", "pin.json")
+
+	// Create wallets directory if not exists
+	if err := os.MkdirAll(filepath.Dir(pinFilePath), 0700); err != nil {
+		return req.Reply(fmt.Sprintf("Error creating wallets directory: %v", err))
+	}
+
+	// Create pin data struct
+	pinData := struct {
+		Password string `json:"password"`
+	}{Password: password}
+
+	// Marshal to JSON
+	pinJson, err := json.MarshalIndent(pinData, "", "  ")
+	if err != nil {
+		return req.Reply(fmt.Sprintf("Error marshaling pin data: %v", err))
+	}
+
+	// Write to pin.json
+	if err := os.WriteFile(pinFilePath, pinJson, 0600); err != nil {
+		return req.Reply(fmt.Sprintf("Error writing pin.json: %v", err))
+	}
+
+	return req.Reply(fmt.Sprintf("✅ Wallet created successfully!\n\nAddress: %s\n\nKeystore saved to your workspace.\nPIN saved to pin.json for auto-signing.", info.Address))
+}
+
+func getStoredPIN(workspace string) (string, error) {
+	pinFilePath := filepath.Join(workspace, "wallets", "pin.json")
+	pinJson, err := os.ReadFile(pinFilePath)
+	if err != nil {
+		return "", fmt.Errorf("failed to read pin.json (please run /wallet create first): %w", err)
+	}
+
+	var pinData struct {
+		Password string `json:"password"`
+	}
+	if err := json.Unmarshal(pinJson, &pinData); err != nil {
+		return "", fmt.Errorf("failed to parse pin.json: %w", err)
+	}
+	return pinData.Password, nil
 }
 
 func handleWalletTransfer(ctx context.Context, req Request, rt *Runtime, args string) error {
-	// Split arguments: to, amount, password
-	parts := strings.SplitN(strings.TrimSpace(args), " ", 3)
-	if len(parts) < 3 {
-		return req.Reply("Usage: /wallet transfer [to] [amount] [password]")
+	// Split arguments: to, amount
+	parts := strings.SplitN(strings.TrimSpace(args), " ", 2)
+	if len(parts) < 2 {
+		return req.Reply("Usage: /wallet transfer [to] [amount]")
 	}
 
 	to := common.HexToAddress(parts[0])
@@ -106,21 +149,29 @@ func handleWalletTransfer(ctx context.Context, req Request, rt *Runtime, args st
 	if err != nil {
 		return req.Reply(fmt.Sprintf("Invalid amount: %v", err))
 	}
-	password := parts[2]
 
 	w := wallet.NewService(wallet.Config{
 		Enabled: rt.Config.Wallet.Enabled,
 		Chains:  convertChainConfigs(rt.Config.Wallet.Chains),
-	}, rt.Config.Agents.Defaults.Workspace)
+	}, rt.Config.WorkspacePath())
 	if err := w.Initialize(ctx); err != nil {
 		return req.Reply(fmt.Sprintf("Error initializing wallet service: %v", err))
 	}
 	defer w.Close()
 
+	// Get stored PIN
+	password, err := getStoredPIN(w.GetWorkspace())
+	if err != nil {
+		return req.Reply(fmt.Sprintf("Error getting PIN: %v", err))
+	}
+
 	// Get first account from keystore
 	accounts := w.GetAccounts()
 	if len(accounts) == 0 {
 		return req.Reply("No wallets found. Create a wallet first with /wallet create [password]")
+	}
+	if len(accounts) > 1 {
+		return req.Reply("Multiple wallets found. System only supports one hot wallet.")
 	}
 	from := accounts[0].Address
 
@@ -146,10 +197,10 @@ func handleWalletTransfer(ctx context.Context, req Request, rt *Runtime, args st
 }
 
 func handleWalletTransferToken(ctx context.Context, req Request, rt *Runtime, args string) error {
-	// Split arguments: to, amount, password
-	parts := strings.SplitN(strings.TrimSpace(args), " ", 3)
-	if len(parts) < 3 {
-		return req.Reply("Usage: /wallet transfer_token [to] [amount] [password]")
+	// Split arguments: to, amount
+	parts := strings.SplitN(strings.TrimSpace(args), " ", 2)
+	if len(parts) < 2 {
+		return req.Reply("Usage: /wallet transfer_token [to] [amount]")
 	}
 
 	to := common.HexToAddress(parts[0])
@@ -158,21 +209,29 @@ func handleWalletTransferToken(ctx context.Context, req Request, rt *Runtime, ar
 	if err != nil {
 		return req.Reply(fmt.Sprintf("Invalid amount: %v", err))
 	}
-	password := parts[2]
 
 	w := wallet.NewService(wallet.Config{
 		Enabled: rt.Config.Wallet.Enabled,
 		Chains:  convertChainConfigs(rt.Config.Wallet.Chains),
-	}, rt.Config.Agents.Defaults.Workspace)
+	}, rt.Config.WorkspacePath())
 	if err := w.Initialize(ctx); err != nil {
 		return req.Reply(fmt.Sprintf("Error initializing wallet service: %v", err))
 	}
 	defer w.Close()
 
+	// Get stored PIN
+	password, err := getStoredPIN(w.GetWorkspace())
+	if err != nil {
+		return req.Reply(fmt.Sprintf("Error getting PIN: %v", err))
+	}
+
 	// Get first account from keystore
 	accounts := w.GetAccounts()
 	if len(accounts) == 0 {
 		return req.Reply("No wallets found. Create a wallet first with /wallet create [password]")
+	}
+	if len(accounts) > 1 {
+		return req.Reply("Multiple wallets found. System only supports one hot wallet.")
 	}
 	from := accounts[0].Address
 
@@ -210,7 +269,7 @@ func handleWalletInfo(ctx context.Context, req Request, rt *Runtime) error {
 	w := wallet.NewService(wallet.Config{
 		Enabled: rt.Config.Wallet.Enabled,
 		Chains:  convertChainConfigs(rt.Config.Wallet.Chains),
-	}, rt.Config.Agents.Defaults.Workspace)
+	}, rt.Config.WorkspacePath())
 	if err := w.Initialize(ctx); err != nil {
 		return req.Reply(fmt.Sprintf("Error initializing wallet service: %v", err))
 	}
@@ -339,7 +398,7 @@ func handleWalletCall(ctx context.Context, req Request, rt *Runtime, args string
 	w := wallet.NewService(wallet.Config{
 		Enabled: rt.Config.Wallet.Enabled,
 		Chains:  convertChainConfigs(rt.Config.Wallet.Chains),
-	}, rt.Config.Agents.Defaults.Workspace)
+	}, rt.Config.WorkspacePath())
 	if err := w.Initialize(ctx); err != nil {
 		return req.Reply(fmt.Sprintf("Error initializing wallet service: %v", err))
 	}
@@ -371,9 +430,9 @@ func handleWalletCall(ctx context.Context, req Request, rt *Runtime, args string
 }
 
 func handleWalletWrite(ctx context.Context, req Request, rt *Runtime, args string) error {
-	parts := strings.SplitN(strings.TrimSpace(args), " ", 5)
-	if len(parts) < 5 {
-		return req.Reply("Usage: /wallet write <contract_address> <abi_type> <method> <value> <password> [parameters]")
+	parts := strings.SplitN(strings.TrimSpace(args), " ", 4)
+	if len(parts) < 4 {
+		return req.Reply("Usage: /wallet write <contract_address> <abi_type> <method> <value> [parameters]")
 	}
 
 	contractAddr := common.HexToAddress(parts[0])
@@ -383,11 +442,9 @@ func handleWalletWrite(ctx context.Context, req Request, rt *Runtime, args strin
 	value := new(big.Int)
 	value.SetString(strings.TrimSpace(parts[3]), 10)
 
-	password := parts[4]
-
 	var params []interface{}
-	if len(strings.Split(strings.TrimSpace(args), " ")) > 5 {
-		paramsPart := strings.SplitN(args, " ", 6)[5]
+	if len(strings.Split(strings.TrimSpace(args), " ")) > 4 {
+		paramsPart := strings.SplitN(args, " ", 5)[4]
 		paramStrs := strings.SplitN(strings.TrimSpace(paramsPart), " ", -1)
 		for _, p := range paramStrs {
 			if strings.TrimSpace(p) != "" {
@@ -400,16 +457,25 @@ func handleWalletWrite(ctx context.Context, req Request, rt *Runtime, args strin
 	w := wallet.NewService(wallet.Config{
 		Enabled: rt.Config.Wallet.Enabled,
 		Chains:  convertChainConfigs(rt.Config.Wallet.Chains),
-	}, rt.Config.Agents.Defaults.Workspace)
+	}, rt.Config.WorkspacePath())
 	if err := w.Initialize(ctx); err != nil {
 		return req.Reply(fmt.Sprintf("Error initializing wallet service: %v", err))
 	}
 	defer w.Close()
 
+	// Get stored PIN
+	password, err := getStoredPIN(w.GetWorkspace())
+	if err != nil {
+		return req.Reply(fmt.Sprintf("Error getting PIN: %v", err))
+	}
+
 	// Get accounts from keystore
 	accounts := w.GetAccounts()
 	if len(accounts) == 0 {
 		return req.Reply("No wallets found")
+	}
+	if len(accounts) > 1 {
+		return req.Reply("Multiple wallets found. System only supports one hot wallet.")
 	}
 	from := accounts[0].Address
 

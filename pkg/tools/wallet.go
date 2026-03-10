@@ -28,7 +28,36 @@ func (t *QueryContractCallTool) Name() string {
 }
 
 func (t *QueryContractCallTool) Description() string {
-	return "Queries a read-only smart contract function on ClawSwift network"
+	return "Queries a read-only smart contract function on ClawSwift network. " +
+		"Use this when user asks to query contract data like 'เช็ค balanceOf', 'ดู totalSupply', 'call contract', etc."
+}
+
+func (t *QueryContractCallTool) Parameters() map[string]any {
+	return map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"contract_address": map[string]any{
+				"type":        "string",
+				"description": "Smart contract address (0x...)",
+			},
+			"abi_type": map[string]any{
+				"type":        "string",
+				"description": "ABI type/name (e.g., 'erc20', 'erc721')",
+			},
+			"method": map[string]any{
+				"type":        "string",
+				"description": "Method name to call (e.g., 'balanceOf', 'totalSupply')",
+			},
+			"params": map[string]any{
+				"type":        "array",
+				"description": "Optional method arguments",
+				"items": map[string]any{
+					"type": "string",
+				},
+			},
+		},
+		"required": []string{"contract_address", "abi_type", "method"},
+	}
 }
 
 func (t *QueryContractCallTool) Execute(ctx context.Context, args map[string]any) *ToolResult {
@@ -107,7 +136,41 @@ func (t *ExecuteContractWriteTool) Name() string {
 }
 
 func (t *ExecuteContractWriteTool) Description() string {
-	return "Executes a write smart contract function on ClawSwift network"
+	return "Executes a write smart contract function on ClawSwift network. " +
+		"Use this when user asks to write to contract like 'transfer tokens', 'approve', 'write contract', etc. " +
+		"PIN is read automatically from workspace."
+}
+
+func (t *ExecuteContractWriteTool) Parameters() map[string]any {
+	return map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"contract_address": map[string]any{
+				"type":        "string",
+				"description": "Smart contract address (0x...)",
+			},
+			"abi_type": map[string]any{
+				"type":        "string",
+				"description": "ABI type/name",
+			},
+			"method": map[string]any{
+				"type":        "string",
+				"description": "Method name to call (e.g., 'transfer', 'approve')",
+			},
+			"value": map[string]any{
+				"type":        "string",
+				"description": "ETH value to send (use '0' for token transfers)",
+			},
+			"params": map[string]any{
+				"type":        "array",
+				"description": "Method arguments",
+				"items": map[string]any{
+					"type": "string",
+				},
+			},
+		},
+		"required": []string{"contract_address", "abi_type", "method", "value"},
+	}
 }
 
 func (t *ExecuteContractWriteTool) Execute(ctx context.Context, args map[string]any) *ToolResult {

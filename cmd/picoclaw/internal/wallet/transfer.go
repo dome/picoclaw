@@ -2,14 +2,17 @@ package wallet
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math/big"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/spf13/cobra"
 	"github.com/sipeed/picoclaw/pkg/wallet"
+	"github.com/spf13/cobra"
 )
 
 func newTransferCommand(walletServiceFn func() (*wallet.Service, error)) *cobra.Command {
@@ -18,37 +21,55 @@ func newTransferCommand(walletServiceFn func() (*wallet.Service, error)) *cobra.
 	)
 
 	cmd := &cobra.Command{
-		Use:   "transfer [from] [to] [amount] [password]",
-		Short: "Transfer ETH or ERC20 tokens to an address",
-		Long: `Transfer ETH or ERC20 tokens to an address.
+		Use:   "transfer [to] [amount]",
+		Short: "Transfer ETH or ERC20 tokens to an address (auto-use only wallet and PIN from pin.json)",
+		Long: `Transfer ETH or ERC20 tokens to an address using only wallet and PIN from pin.json.
 Automatically uses ERC20 transfer for non-native chains.`,
-		Args: cobra.ExactArgs(4),
-		Example: `# Transfer ETH on Ethereum
-picoclaw wallet transfer 0x123... 0x456... 1.5 mypassword
+		Args: cobra.ExactArgs(2),
+		Example: `# Transfer on default chain (ClawSwift)
+picoclaw wallet transfer 0x456... 0.01
 
 # Transfer on specific chain (ClawSwift)
-picoclaw wallet transfer 0x123... 0x456... 100 mypassword --chain-id 7441`,
+picoclaw wallet transfer 0x456... 0.01 --chain-id 7441`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			fromAddress := strings.TrimSpace(args[0])
-			toAddress := strings.TrimSpace(args[1])
-			amountStr := strings.TrimSpace(args[2])
-			password := strings.TrimSpace(args[3])
+			toAddress := strings.TrimSpace(args[0])
+			amountStr := strings.TrimSpace(args[1])
 
-			// Validate addresses
-			if !common.IsHexAddress(fromAddress) {
-				return fmt.Errorf("invalid from address: %s", fromAddress)
-			}
+			// Validate to address
 			if !common.IsHexAddress(toAddress) {
 				return fmt.Errorf("invalid to address: %s", toAddress)
 			}
 
-			from := common.HexToAddress(fromAddress)
 			to := common.HexToAddress(toAddress)
 
 			walletService, err := walletServiceFn()
 			if err != nil {
 				return fmt.Errorf("wallet service not available: %w", err)
 			}
+
+			// Read password from pin.json
+			pinFilePath := filepath.Join(walletService.GetWorkspace(), "wallets", "pin.json")
+			pinJson, err := os.ReadFile(pinFilePath)
+			if err != nil {
+				return fmt.Errorf("failed to read pin.json: %w", err)
+			}
+
+			var pinData struct {
+				Password string `json:"password"`
+			}
+			if err := json.Unmarshal(pinJson, &pinData); err != nil {
+				return fmt.Errorf("failed to unmarshal pin.json: %w", err)
+			}
+
+			// Get default wallet address (only one wallet allowed)
+			accounts := walletService.GetAccounts()
+			if len(accounts) == 0 {
+				return fmt.Errorf("no wallet found in keystore")
+			}
+			if len(accounts) > 1 {
+				return fmt.Errorf("multiple wallets found - system only allows one wallet")
+			}
+			from := accounts[0].Address
 
 			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 			defer cancel()
@@ -58,10 +79,6 @@ picoclaw wallet transfer 0x123... 0x456... 100 mypassword --chain-id 7441`,
 			if _, ok := amount.SetString(amountStr); !ok {
 				return fmt.Errorf("invalid amount: %s", amountStr)
 			}
-
-			// Convert to wei (we'll handle decimals in the service)
-			amountInt := new(big.Int)
-			amount.Int(amountInt)
 
 			// Get chain configuration
 			cfg := walletService.GetConfig()
@@ -84,7 +101,7 @@ picoclaw wallet transfer 0x123... 0x456... 100 mypassword --chain-id 7441`,
 			amountWei := chain.ToWei(amountFloat)
 
 			// Perform transfer
-			tx, err := walletService.Transfer(ctx, from, to, amountWei, password, chain.ChainID)
+			tx, err := walletService.Transfer(ctx, from, to, amountWei, pinData.Password, chain.ChainID)
 			if err != nil {
 				return fmt.Errorf("transfer failed: %w", err)
 			}

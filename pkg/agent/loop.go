@@ -233,6 +233,14 @@ func registerSharedTools(
 			} else {
 				logger.WarnCF("agent", "spawn tool requires subagent to be enabled", nil)
 			}
+
+			// Wallet tools (hotwallet mode - AI can query, transfer, and interact with contracts)
+			if cfg.Wallet.Enabled {
+				agent.Tools.Register(tools.NewWalletQueryTool(agent.Workspace, cfg))
+				agent.Tools.Register(tools.NewWalletTransferTool(agent.Workspace, cfg))
+				agent.Tools.Register(tools.NewQueryContractCallTool(cfg))
+				agent.Tools.Register(tools.NewExecuteContractWriteTool(cfg))
+			}
 		}
 	}
 }

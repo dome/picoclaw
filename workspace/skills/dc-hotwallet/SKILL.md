@@ -1,121 +1,134 @@
 ---
 name: dc-hotwallet
-version: 1.1.0
-description: "Telegram Wallet Commands for DomeClaw - EVM Wallet & Blockchain Integration on ClawSwift chain."
+version: 2.0.0
+description: "Telegram Wallet Tools for DomeClaw - AI-powered EVM Wallet & Blockchain Integration on ClawSwift chain."
 homepage: https://github.com/domeclaw/domeclaw
-metadata: {"nanobot":{"emoji":"🦐","requires":{"tools":["wallet_auto_transfer","query_wallet_balance","query_contract_call","execute_contract_write"]},"natural_language":{"patterns":{"transfer":"Transfer {amount} {token} to {address}","balance":"Check {token} balance of {address}"},"mapping":{"transfer":{"tool":"wallet_auto_transfer","parameters":{"amount":"{amount}","token":"{token}","to":"{address}"},"pin_required":true,"cwd":"/Users/dome/project/domeclaw/picoclaw-domeclaw/picoclaw","command":"picoclaw --config /Users/dome/project/domeclaw/picoclaw-domeclaw/picoclaw/config-with-wallet.json wallet transfer"},"balance":{"tool":"query_wallet_balance","parameters":{"token":"{token}","address":"{address}"}}}}},"category":"blockchain","platform":"telegram","chain":"clawswift","chain_id":7441}
+metadata: {"nanobot":{"emoji":"🦐","requires":{"tools":["query_wallet_balance","wallet_transfer","query_contract_call","execute_contract_write"]}},"category":"blockchain","platform":"telegram","chain":"clawswift","chain_id":7441}
 ---
 
 # Wallet Skill (Hotwallet Mode)
 
-EVM wallet operations via Telegram Bot on ClawSwift chain (Chain ID: 7441).
+EVM wallet operations via AI Tools on ClawSwift chain (Chain ID: 7441).
 
-**⚠️ Hotwallet Mode**: PIN stored in plaintext. AI can execute transactions automatically. Convenience over security - use for testnet only.
+**⚠️ Hotwallet Mode**: PIN stored in plaintext at `workspace/wallets/pin.json`. AI can execute transactions automatically. Convenience over security - use for testnet only.
 
-## Quick Start
+## AI Tools Available
 
-```
-# 1. Create wallet
-/wallet create 1234
+When users ask about wallet operations in natural language, you MUST use the appropriate tool:
 
-# 2. Check balance
-/wallet balance
+### 1. query_wallet_balance
+**Use when:** User asks about their wallet balance, coins, or tokens.
 
-# 3. Transfer tokens
-/wallet transfer 0xRecipient 100 1234
+**Examples:**
+- "wallet มีเหรียญอะไรบ้าง" → Use `query_wallet_balance`
+- "เช็คยอดเงิน" → Use `query_wallet_balance`
+- "balance เท่าไหร่" → Use `query_wallet_balance`
+- "มีกี่เหรียญ" → Use `query_wallet_balance`
+- "ดู wallet" → Use `query_wallet_balance`
+- "check balance" → Use `query_wallet_balance`
+- "มีเงินเท่าไหร่" → Use `query_wallet_balance`
+- "เหลือกี่บาท" → Use `query_wallet_balance`
 
-# 4. Check specific token
-/wallet balance 0x20c0000000000000000000000000000000000000
-```
+**Returns:** Wallet address, balance, symbol, and explorer link.
 
-## AI-Powered Operations
+---
 
-Ask naturally in any language. AI will execute via tools:
+### 2. wallet_transfer
+**Use when:** User wants to send/transfer tokens.
 
-| You say | AI does |
-|---------|---------|
-| "What's my balance" | Queries balance directly |
-| "Transfer 0.01 CLAW to 0xABC..." | Executes transfer automatically |
-| "Check balanceOf of 0xABC..." | Calls contract function |
-| "Approve for 0xDEF..." | Writes to contract |
+**Examples:**
+- "ส่ง 0.01 CLAW ให้ 0xABC..." → Use `wallet_transfer`
+- "โอน 100 tokens ให้เพื่อน" → Use `wallet_transfer`
+- "transfer 0.5 CLAW to 0x..." → Use `wallet_transfer`
+- "ส่งเงินให้ 0x..." → Use `wallet_transfer`
 
-## Natural Language Commands
+**Parameters:**
+- `to_address`: Recipient address (0x...)
+- `amount`: Amount to transfer (e.g., "0.01", "100")
+- `token_address`: (Optional) ERC20 token address. If not provided, sends native token (CLAW).
 
-### Supported Patterns
-- **Transfer Pattern**: "Transfer {amount} {token} to {address}"
-  - {amount}: The amount of tokens to transfer (e.g., 0.1, 100)
-  - {token}: The token name (e.g., CLAW)
-  - {address}: The recipient address (e.g., 0xA3570FCDA303F55e0978be450f87F885d80a3758)
+**Returns:** Transaction hash with explorer link.
 
-### Parameter Mapping
-- Natural language commands will be converted to parameters for the wallet_auto_transfer tool
-- Mapping: amount → amount, token → token, address → to
+---
 
-### Examples
-| Natural Language Command | Equivalent CLI Command | Tool Parameters |
-|---------------------------|-----------------------|----------------------|
-| Transfer 0.1 CLAW to 0xA3570FCDA303F55e0978be450f87F885d80a3758 | /wallet transfer 0xA3570FCDA303F55e0978be450f87F885d80a3758 0.1 1234 | to=0xA3570FCDA303F55e0978be450f87F885d80a3758, amount=0.1, token=CLAW |
-| Check CLAW balance of 0xA3570FCDA303F55e0978be450f87F885d80a3758 | /wallet balance 0xA3570FCDA303F55e0978be450f87F885d80a3758 | address=0xA3570FCDA303F55e0978be450f87F885d80a3758, token=CLAW |
-| Transfer 100 CLAW to 0x44c2db1fc0986ca3c173403701c909874badc0d0 | /wallet transfer 0x44c2db1fc0986ca3c173403701c909874badc0d0 100 1234 | to=0x44c2db1fc0986ca3c173403701c909874badc0d0, amount=100, token=CLAW |
+### 3. query_contract_call
+**Use when:** User wants to read data from a smart contract.
 
-### Parsing Rules
-- **Amount Extraction**: Use regex `\d+\.?\d*` to extract the token amount (e.g., 0.1, 100)
-- **Token Extraction**: Use regex `[A-Za-z]+` to extract the token name (e.g., CLAW)
-- **Address Extraction**: Use regex `0x[0-9a-fA-F]{40}` to extract the recipient address
-- **PIN Handling**: Will prompt the user to enter their PIN after successful parameter extraction
-- **Fallback Logic**: If any parameter is missing, will prompt the user to provide additional details
+**Examples:**
+- "เช็ค balanceOf ของ 0x... บนสัญญา 0x..." → Use `query_contract_call`
+- "ดู totalSupply" → Use `query_contract_call`
+- "call balanceOf on token contract" → Use `query_contract_call`
+- "เช็ค allowance" → Use `query_contract_call`
 
-### Regex Patterns
-```regex
-# Transfer Sentence Pattern Extraction
-^Transfer\s+(\d+\.?\d*)\s+([A-Za-z]+)\s+to\s+(0x[0-9a-fA-F]{40})$```
+**Parameters:**
+- `contract_address`: Smart contract address
+- `abi_type`: ABI name (e.g., "erc20", "erc721")
+- `method`: Method name (e.g., "balanceOf", "totalSupply")
+- `params`: (Optional) Array of arguments
 
-## Telegram Commands
+---
 
-### Wallet Management
-```
-/wallet create [PIN]     # Create new wallet
-/wallet info             # View address & balance
-/wallet unlock [PIN]     # Unlock for transactions
-/wallet lock             # Lock wallet
-```
+### 4. execute_contract_write
+**Use when:** User wants to write/execute a function on a smart contract (requires PIN).
 
-### Token Operations
-```
-/wallet balance [token]              # Check balance (default: CLAW)
-/wallet transfer <to> <amt> <pin>    # Send CLAW tokens
-/wallet transfertoken <token> <to> <amt> <pin>  # Send ERC20
-```
+**Examples:**
+- "approve ให้ 0x... ใช้ 100 tokens" → Use `execute_contract_write`
+- "transfer tokens บนสัญญา" → Use `execute_contract_write`
+- "write to contract" → Use `execute_contract_write`
 
-### Smart Contracts
-```
-/wallet abilist                       # List uploaded ABIs
-/wallet abiupload <name>              # Upload ABI (reply to JSON)
-/wallet call <contract> <abi> <method> [args]   # Read contract
-/wallet write <c> <abi> <m> <val> <pin> [args]  # Write contract
-```
+**Parameters:**
+- `contract_address`: Smart contract address
+- `abi_type`: ABI name
+- `method`: Method name (e.g., "transfer", "approve")
+- `value`: ETH value to send (use "0" for token transfers)
+- `params`: Array of arguments
 
-## Examples
+---
 
-### Transfer CLAW
-```
-/wallet transfer 0xA3570FCDA303F55e0978be450f87F885d80a3758 0.01 1234
-```
+## Quick Reference
 
-### Call Contract (Read)
-```
-/wallet call 0x20c0000000000000000000000000000000000000 erc20 balanceOf 0x44c2db1fc0986ca3c173403701c909874badc0d0
-```
+| User Intent | Tool to Use |
+|-------------|-------------|
+| Check balance | `query_wallet_balance` |
+| Transfer/Send tokens | `wallet_transfer` |
+| Read contract data | `query_contract_call` |
+| Write to contract | `execute_contract_write` |
 
-### Write Contract
-```
-/wallet write 0x20c0000000000000000000000000000000000000 erc20 transfer 0 1234 0xRecipientAddress 1000000000000000000
-```
+## Network Configuration
 
-
+- **Chain**: ClawSwift
+- **Chain ID**: 7441
+- **RPC**: https://exp.clawswift.net/rpc
+- **Explorer**: https://exp.clawswift.net
+- **Gas Token**: 0x20c0000000000000000000000000000000000000 (CLAW)
+- **Decimals**: 16
 
 ## Security Warning
 
 This is a **hotwallet** implementation:
-- PIN stored at `workspace/wallet/pin.json` (plaintext)
-- AI has direct keystore access
+- PIN stored at `workspace/wallets/pin.json` (plaintext)
+- AI has direct keystore access and can sign transactions automatically
+- Use for testnet only
+- Never store large amounts in this wallet
+
+## Examples
+
+### Example 1: Check Balance
+**User:** "wallet มีเหรียญอะไรบ้าง"
+**AI Action:** Call `query_wallet_balance` tool
+**Result:** Shows wallet address, CLAW balance, and explorer link
+
+### Example 2: Transfer Tokens
+**User:** "ส่ง 0.01 CLAW ให้ 0xA3570FCDA303F55e0978be450f87F885d80a3758"
+**AI Action:** Call `wallet_transfer` with to_address and amount
+**Result:** Transaction submitted with tx hash and explorer link
+
+### Example 3: Query Contract
+**User:** "เช็ค balanceOf ของ 0xABC บนสัญญา 0x20c0000000000000000000000000000000000000"
+**AI Action:** Call `query_contract_call` with contract address and method
+**Result:** Returns balance from contract
+
+### Example 4: Execute Contract Write
+**User:** "approve ให้ 0xDEF ใช้ 1000 tokens"
+**AI Action:** Call `execute_contract_write` for approve function
+**Result:** Transaction submitted
